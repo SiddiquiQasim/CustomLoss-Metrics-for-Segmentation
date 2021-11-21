@@ -103,6 +103,8 @@ def focalTverskyLoss(beta=0.7, gamma=2.0):
         loss = tf.math.pow((1 - tverskyIndex), gamma)
         return K.mean(loss)
 
+    return focalTver_loss
+
 
 def hausdorffDistanceLoss(w, h, alpha):
 
