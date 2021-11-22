@@ -10,25 +10,22 @@ def crossEntropyLoss():
     return ce_loss
 
 
-def weightedCrossEntropyLoss(beta, balance=False):
+def weightedCrossEntropyLoss(beta):
 
     '''beta => value can be used to tune false negatives and false
     positives. E.g; If you want to reduce the number of false
     negatives then set beta > 1, similarly to decrease the number
-    of false positives, set bata < 1
-    balance => we also weight also the negative examples
-    '''
-    
+    of false positives, set bata < 1'''
     def wce_loss(labels, preds):
         preds = tf.convert_to_tensor(preds)
         labels = tf.cast(labels, dtype=preds.dtype)
-        bet = tf.cast(beta, dtype=preds.dtype)
-        if balance:
-            loss = - (bet * labels * tf.math.log(preds) + (1 - bet) * (1 - labels) * tf.math.log(1 - preds))
-        else:
-            loss = - (bet * labels * tf.math.log(preds) + (1 - labels) * tf.math.log(1 - preds))           
+        b = labels * beta + (1 - labels) * (1 - beta)
+        ce = tf.keras.losses.BinaryCrossentropy()
+        ce = ce(labels, preds)
+        loss = - (b * ce)          
         return K.mean(loss)
     return wce_loss
+
 
 def focalLoss(alpha=0.25, gamma=2):
 
@@ -37,28 +34,18 @@ def focalLoss(alpha=0.25, gamma=2):
     Entropy loss function
     alpha => range from [0,1]
     '''
-
     def focal_loss(labels, preds):
         preds = tf.convert_to_tensor(preds)
         preds = tf.cast(preds, dtype=tf.float32)
         labels = tf.cast(labels, dtype=tf.float32)
         preds = K.flatten(preds)        
         labels = K.flatten(labels)
-        
-        mask_preds_00 = tf.math.equal(preds, 0.00)
-        mask_preds_01 = ~mask_preds_00
-        
-        preds_01 = tf.boolean_mask(preds, mask_preds_01)
-        preds_01 = tf.math.maximum(preds_01, tf.constant([tf.keras.backend.epsilon()]))
-        preds_00 = tf.boolean_mask(preds, mask_preds_00)
-        
-        labels_01 = tf.boolean_mask(labels, mask_preds_01)
-        labels_00 = tf.boolean_mask(labels, mask_preds_00)
 
-        loss_01 = - tf.math.reduce_mean(alpha * tf.math.pow((1 - labels_01), gamma) * tf.math.log(preds_01))
-        loss_00 = - tf.math.reduce_mean(alpha * tf.math.pow((1 - (1 -labels_00)), gamma) * tf.math.log(1 - preds_00))
-        loss = loss_01 + loss_00
-        return K.mean(loss / 2)
+        ce = tf.keras.losses.BinaryCrossentropy()
+        ce = ce(labels, preds)
+        a = labels * alpha + (1 - labels) * (1 - alpha)
+        pt = tf.where(labels == 1, preds, 1 - preds)
+        return K.mean(a * (1 - pt) ** gamma * ce)
     return focal_loss
 
 
@@ -69,7 +56,7 @@ def ioULoss():
         labels = tf.cast(labels, dtype=preds.dtype)
         preds = K.flatten(preds)
         labels = K.flatten(labels)
-        loss = 1 - tf.math.divide(K.sum(labels * preds, axis=-1), K.sum(labels + preds - labels * preds, axis=-1))        
+        loss = 1 - tf.math.divide(K.sum(labels * preds, axis=-1) + 1, K.sum(labels + preds - labels * preds, axis=-1) + 1)        
         return K.mean(loss)
 
 
@@ -98,8 +85,8 @@ def focalTverskyLoss(beta=0.7, gamma=2.0):
     def focalTver_loss(labels, preds):
         preds = tf.convert_to_tensor(preds)
         labels = tf.cast(labels, dtype=preds.dtype)  
-        tverskyIndex =  tf.math.divide(labels * preds, 
-                                       (labels * preds + beta * (1 - labels) * preds + (1 - beta) * labels * (1 - preds)))
+        tverskyIndex =  tf.math.divide(K.sum(labels * preds) + 1, 
+                                       (K.sum(labels * preds) + beta * K.sum((1 - labels) * preds) + (1 - beta) * K.sum(labels * (1 - preds)))+ 1)
         loss = tf.math.pow((1 - tverskyIndex), gamma)
         return K.mean(loss)
 
